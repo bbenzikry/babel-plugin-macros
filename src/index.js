@@ -1,83 +1,88 @@
-const p = require('path')
-const resolve = require('resolve')
+const p = require("path");
+// const resolve = require('resolve')
 // const printAST = require('ast-pretty-print')
 
-const macrosRegex = /[./]macro(\.js)?$/
+const macrosRegex = /[./]macro(\.js)?$/;
 
 // https://stackoverflow.com/a/32749533/971592
 class MacroError extends Error {
   constructor(message) {
-    super(message)
-    this.name = 'MacroError'
+    super(message);
+    this.name = "MacroError";
     /* istanbul ignore else */
-    if (typeof Error.captureStackTrace === 'function') {
-      Error.captureStackTrace(this, this.constructor)
+    if (typeof Error.captureStackTrace === "function") {
+      Error.captureStackTrace(this, this.constructor);
     } else if (!this.stack) {
-      this.stack = new Error(message).stack
+      this.stack = new Error(message).stack;
     }
   }
 }
 
-let _configExplorer = null
+let _configExplorer = null;
 function getConfigExporer() {
   return (_configExplorer =
     _configExplorer ||
     // Lazy load cosmiconfig since it is a relatively large bundle
-    require('cosmiconfig')('babel-plugin-macros', {
+    require("cosmiconfig")("babel-plugin-macros", {
       searchPlaces: [
-        'package.json',
-        '.babel-plugin-macrosrc',
-        '.babel-plugin-macrosrc.json',
-        '.babel-plugin-macrosrc.yaml',
-        '.babel-plugin-macrosrc.yml',
-        '.babel-plugin-macrosrc.js',
-        'babel-plugin-macros.config.js',
+        "package.json",
+        ".babel-plugin-macrosrc",
+        ".babel-plugin-macrosrc.json",
+        ".babel-plugin-macrosrc.yaml",
+        ".babel-plugin-macrosrc.yml",
+        ".babel-plugin-macrosrc.js",
+        "babel-plugin-macros.config.js"
       ],
-      packageProp: 'babelMacros',
-      sync: true,
-    }))
+      packageProp: "babelMacros",
+      sync: true
+    }));
 }
 
 function createMacro(macro, options = {}) {
-  if (options.configName === 'options') {
+  if (options.configName === "options") {
     throw new Error(
-      `You cannot use the configName "options". It is reserved for babel-plugin-macros.`,
-    )
+      `You cannot use the configName "options". It is reserved for babel-plugin-macros.`
+    );
   }
-  macroWrapper.isBabelMacro = true
-  macroWrapper.options = options
-  return macroWrapper
+  macroWrapper.isBabelMacro = true;
+  macroWrapper.options = options;
+  return macroWrapper;
 
   function macroWrapper(args) {
-    const {source, isBabelMacrosCall} = args
+    const { source, isBabelMacrosCall } = args;
     if (!isBabelMacrosCall) {
       throw new MacroError(
         `The macro you imported from "${source}" is being executed outside the context of compilation with babel-plugin-macros. ` +
           `This indicates that you don't have the babel plugin "babel-plugin-macros" configured correctly. ` +
           `Please see the documentation for how to configure babel-plugin-macros properly: ` +
-          'https://github.com/kentcdodds/babel-plugin-macros/blob/master/other/docs/user.md',
-      )
+          "https://github.com/kentcdodds/babel-plugin-macros/blob/master/other/docs/user.md"
+      );
     }
-    return macro(args)
+    return macro(args);
   }
 }
 
 function nodeResolvePath(source, basedir) {
-  return resolve.sync(source, {basedir})
+  // return resolve.sync(source, {basedir})
+  return require.resolve(source);
 }
 
 function macrosPlugin(
   babel,
-  {require: _require = require, resolvePath = nodeResolvePath, ...options} = {},
+  {
+    require: _require = require,
+    resolvePath = nodeResolvePath,
+    ...options
+  } = {}
 ) {
   function interopRequire(path) {
     // eslint-disable-next-line import/no-dynamic-require
-    const o = _require(path)
-    return o && o.__esModule && o.default ? o.default : o
+    const o = _require(path);
+    return o && o.__esModule && o.default ? o.default : o;
   }
 
   return {
-    name: 'macros',
+    name: "macros",
     visitor: {
       Program(progPath, state) {
         progPath.traverse({
@@ -85,21 +90,21 @@ function macrosPlugin(
             const isMacros = looksLike(path, {
               node: {
                 source: {
-                  value: v => macrosRegex.test(v),
-                },
-              },
-            })
+                  value: v => macrosRegex.test(v)
+                }
+              }
+            });
             if (!isMacros) {
-              return
+              return;
             }
             const imports = path.node.specifiers.map(s => ({
               localName: s.local.name,
               importedName:
-                s.type === 'ImportDefaultSpecifier'
-                  ? 'default'
-                  : s.imported.name,
-            }))
-            const source = path.node.source.value
+                s.type === "ImportDefaultSpecifier"
+                  ? "default"
+                  : s.imported.name
+            }));
+            const source = path.node.source.value;
             const result = applyMacros({
               path,
               imports,
@@ -108,11 +113,11 @@ function macrosPlugin(
               babel,
               interopRequire,
               resolvePath,
-              options,
-            })
+              options
+            });
 
             if (!result || !result.keepImports) {
-              path.remove()
+              path.remove();
             }
           },
           VariableDeclaration(path) {
@@ -121,28 +126,28 @@ function macrosPlugin(
                 node: {
                   init: {
                     callee: {
-                      type: 'Identifier',
-                      name: 'require',
+                      type: "Identifier",
+                      name: "require"
                     },
                     arguments: args =>
-                      args.length === 1 && macrosRegex.test(args[0].value),
-                  },
-                },
-              })
+                      args.length === 1 && macrosRegex.test(args[0].value)
+                  }
+                }
+              });
 
             path
-              .get('declarations')
+              .get("declarations")
               .filter(isMacros)
               .forEach(child => {
                 const imports = child.node.id.name
-                  ? [{localName: child.node.id.name, importedName: 'default'}]
+                  ? [{ localName: child.node.id.name, importedName: "default" }]
                   : child.node.id.properties.map(property => ({
                       localName: property.value.name,
-                      importedName: property.key.name,
-                    }))
+                      importedName: property.key.name
+                    }));
 
-                const call = child.get('init')
-                const source = call.node.arguments[0].value
+                const call = child.get("init");
+                const source = call.node.arguments[0].value;
                 const result = applyMacros({
                   path: call,
                   imports,
@@ -151,18 +156,18 @@ function macrosPlugin(
                   babel,
                   interopRequire,
                   resolvePath,
-                  options,
-                })
+                  options
+                });
 
                 if (!result || !result.keepImports) {
-                  child.remove()
+                  child.remove();
                 }
-              })
-          },
-        })
-      },
-    },
-  }
+              });
+          }
+        });
+      }
+    }
+  };
 }
 
 // eslint-disable-next-line complexity
@@ -174,41 +179,41 @@ function applyMacros({
   babel,
   interopRequire,
   resolvePath,
-  options,
+  options
 }) {
   /* istanbul ignore next (pretty much only useful for astexplorer I think) */
   const {
     file: {
-      opts: {filename = ''},
-    },
-  } = state
-  let hasReferences = false
+      opts: { filename = "" }
+    }
+  } = state;
+  let hasReferences = false;
   const referencePathsByImportName = imports.reduce(
-    (byName, {importedName, localName}) => {
-      const binding = path.scope.getBinding(localName)
+    (byName, { importedName, localName }) => {
+      const binding = path.scope.getBinding(localName);
 
-      byName[importedName] = binding.referencePaths
-      hasReferences = hasReferences || Boolean(byName[importedName].length)
+      byName[importedName] = binding.referencePaths;
+      hasReferences = hasReferences || Boolean(byName[importedName].length);
 
-      return byName
+      return byName;
     },
-    {},
-  )
+    {}
+  );
 
-  const isRelative = source.indexOf('.') === 0
-  const requirePath = resolvePath(source, p.dirname(getFullFilename(filename)))
+  const isRelative = source.indexOf(".") === 0;
+  const requirePath = resolvePath(source, p.dirname(getFullFilename(filename)));
 
-  const macro = interopRequire(requirePath)
+  const macro = interopRequire(requirePath);
   if (!macro.isBabelMacro) {
     throw new Error(
       `The macro imported from "${source}" must be wrapped in "createMacro" ` +
         `which you can get from "babel-plugin-macros". ` +
-        `Please refer to the documentation to see how to do this properly: https://github.com/kentcdodds/babel-plugin-macros/blob/master/other/docs/author.md#writing-a-macro`,
-    )
+        `Please refer to the documentation to see how to do this properly: https://github.com/kentcdodds/babel-plugin-macros/blob/master/other/docs/author.md#writing-a-macro`
+    );
   }
-  const config = getConfig(macro, filename, source, options)
+  const config = getConfig(macro, filename, source, options);
 
-  let result
+  let result;
   try {
     /**
      * Other plugins that run before babel-plugin-macros might use path.replace, where a path is
@@ -219,8 +224,8 @@ function applyMacros({
      * See: https://github.com/kentcdodds/import-all.macro/issues/7
      */
     state.file.scope.path.traverse({
-      Identifier() {},
-    })
+      Identifier() {}
+    });
 
     result = macro({
       references: referencePathsByImportName,
@@ -228,13 +233,13 @@ function applyMacros({
       state,
       babel,
       config,
-      isBabelMacrosCall: true,
-    })
+      isBabelMacrosCall: true
+    });
   } catch (error) {
-    if (error.name === 'MacroError') {
-      throw error
+    if (error.name === "MacroError") {
+      throw error;
     }
-    error.message = `${source}: ${error.message}`
+    error.message = `${source}: ${error.message}`;
     if (!isRelative) {
       error.message = `${
         error.message
@@ -243,49 +248,49 @@ function applyMacros({
         // @org/package/macro -> @org/package
         // package/macro      -> package
         /^((?:@[^/]+\/)?[^/]+).*/,
-        '$1',
-      )}`
+        "$1"
+      )}`;
     }
-    throw error
+    throw error;
   }
-  return result
+  return result;
 }
 
 function getConfigFromFile(configName, filename) {
   try {
-    const loaded = getConfigExporer().searchSync(filename)
+    const loaded = getConfigExporer().searchSync(filename);
 
     if (loaded) {
       return {
         options: loaded.config[configName],
-        path: loaded.filepath,
-      }
+        path: loaded.filepath
+      };
     }
   } catch (e) {
-    return {error: e}
+    return { error: e };
   }
-  return {}
+  return {};
 }
 
 function getConfigFromOptions(configName, options) {
   if (options.hasOwnProperty(configName)) {
-    if (options[configName] && typeof options[configName] !== 'object') {
+    if (options[configName] && typeof options[configName] !== "object") {
       // eslint-disable-next-line no-console
       console.error(
-        `The macro plugin options' ${configName} property was not an object or null.`,
-      )
+        `The macro plugin options' ${configName} property was not an object or null.`
+      );
     } else {
-      return {options: options[configName]}
+      return { options: options[configName] };
     }
   }
-  return {}
+  return {};
 }
 
 function getConfig(macro, filename, source, options) {
-  const {configName} = macro.options
+  const { configName } = macro.options;
   if (configName) {
-    const fileConfig = getConfigFromFile(configName, filename)
-    const optionsConfig = getConfigFromOptions(configName, options)
+    const fileConfig = getConfigFromFile(configName, filename);
+    const optionsConfig = getConfigFromOptions(configName, options);
 
     if (
       optionsConfig.options === undefined &&
@@ -295,32 +300,32 @@ function getConfig(macro, filename, source, options) {
       console.error(
         `There was an error trying to load the config "${configName}" ` +
           `for the macro imported from "${source}. ` +
-          `Please see the error thrown for more information.`,
-      )
+          `Please see the error thrown for more information.`
+      );
       if (fileConfig.error !== undefined) {
-        throw fileConfig.error
+        throw fileConfig.error;
       }
     }
 
     if (
       fileConfig.options !== undefined &&
       optionsConfig.options !== undefined &&
-      typeof fileConfig.options !== 'object'
+      typeof fileConfig.options !== "object"
     ) {
       throw new Error(
         `${fileConfig.path} specified a ${configName} config of type ` +
           `${typeof optionsConfig.options}, but the the macros plugin's ` +
           `options.${configName} did contain an object. Both configs must ` +
-          `contain objects for their options to be mergeable.`,
-      )
+          `contain objects for their options to be mergeable.`
+      );
     }
 
     return {
       ...optionsConfig.options,
-      ...fileConfig.options,
-    }
+      ...fileConfig.options
+    };
   }
-  return undefined
+  return undefined;
 }
 
 /*
@@ -330,9 +335,9 @@ function getConfig(macro, filename, source, options) {
  */
 function getFullFilename(filename) {
   if (p.isAbsolute(filename)) {
-    return filename
+    return filename;
   }
-  return p.join(process.cwd(), filename)
+  return p.join(process.cwd(), filename);
 }
 
 function looksLike(a, b) {
@@ -340,23 +345,23 @@ function looksLike(a, b) {
     a &&
     b &&
     Object.keys(b).every(bKey => {
-      const bVal = b[bKey]
-      const aVal = a[bKey]
-      if (typeof bVal === 'function') {
-        return bVal(aVal)
+      const bVal = b[bKey];
+      const aVal = a[bKey];
+      if (typeof bVal === "function") {
+        return bVal(aVal);
       }
-      return isPrimitive(bVal) ? bVal === aVal : looksLike(aVal, bVal)
+      return isPrimitive(bVal) ? bVal === aVal : looksLike(aVal, bVal);
     })
-  )
+  );
 }
 
 function isPrimitive(val) {
   // eslint-disable-next-line
-  return val == null || /^[sbn]/.test(typeof val)
+  return val == null || /^[sbn]/.test(typeof val);
 }
 
-module.exports = macrosPlugin
+module.exports = macrosPlugin;
 Object.assign(module.exports, {
   createMacro,
-  MacroError,
-})
+  MacroError
+});
